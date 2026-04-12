@@ -1,0 +1,18 @@
+{
+  "1.0": {
+    "version": "1.0.13",
+    "releaseUrl": "https://releases.peakurl.org/package/peakurl-1.0.13.zip",
+    "releaseSha256": "31408e71d1e6afab1256869140a76c81b13bbf9d35ce5eea17e9e0a3b695b194",
+    "tags": [
+      "1.0.13",
+      "1.0",
+      "1",
+      "latest"
+    ],
+    "architectures": [
+      "amd64",
+      "arm64v8"
+    ],
+    "directory": "1.0"
+  }
+}

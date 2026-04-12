@@ -1,0 +1,103 @@
+name: Validate Containers
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PEAKURL_IMAGE_TAG: test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Validate user compose configuration
+        run: docker compose config
+
+      - name: Validate build overlay configuration
+        run: docker compose -f compose.yaml -f compose.build.yaml config
+
+      - name: Build PeakURL image
+        run: docker build --pull -t peakurl:test -f docker/peakurl/Dockerfile .
+
+      - name: Verify DOI metadata is in sync
+        run: |
+          set -euo pipefail
+          version="$(jq -r '."1.0".version' versions.json)"
+          release_url="$(jq -r '."1.0".releaseUrl' versions.json)"
+          release_sha256="$(jq -r '."1.0".releaseSha256' versions.json)"
+
+          test "$(sed -n 's/^ARG PEAKURL_VERSION=//p' 1.0/Dockerfile)" = "$version"
+          test "$(sed -n 's/^ARG PEAKURL_RELEASE_URL=//p' 1.0/Dockerfile)" = "$release_url"
+          test "$(sed -n 's/^ARG PEAKURL_RELEASE_SHA256=//p' 1.0/Dockerfile)" = "$release_sha256"
+          cmp -s docker/peakurl/entrypoint.sh 1.0/docker-entrypoint.sh
+          cmp -s docker/peakurl/php.ini 1.0/php.ini
+
+      - name: Build DOI pinned image
+        run: docker build --pull -t peakurl:doi-test -f 1.0/Dockerfile 1.0
+
+      - name: Smoke test docker compose deployment
+        run: |
+          set -euo pipefail
+          mkdir -p data/peakurl data/mysql
+          docker tag peakurl:test docker.io/peakurl/peakurl:test
+          docker compose up -d
+
+          ready=0
+
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null; then
+              ready=1
+              break
+            fi
+
+            sleep 2
+          done
+
+          if [ "$ready" -eq 1 ]; then
+            exit 0
+          fi
+
+          echo "PeakURL compose smoke test failed." >&2
+          docker compose ps >&2
+          exit 1
+
+      - name: Verify app tree initialized
+        run: |
+          set -euo pipefail
+          test -f data/peakurl/install.php
+
+      - name: Verify GeoIP storage is writable by the web user
+        run: |
+          docker compose exec -T -u www-data peakurl sh -lc '
+            test -d /var/www/html/content/uploads/geoip &&
+            mkdir /var/www/html/content/uploads/geoip/.tmp-codex &&
+            rmdir /var/www/html/content/uploads/geoip/.tmp-codex &&
+            touch /var/www/html/content/uploads/geoip/.geoip-write-test &&
+            rm -f /var/www/html/content/uploads/geoip/.geoip-write-test
+          '
+
+      - name: Verify shell compatibility
+        run: docker run --rm peakurl:test sh -lc 'php -v >/dev/null'
+
+      - name: Verify DOI shell compatibility
+        run: docker run --rm peakurl:doi-test sh -lc 'php -v >/dev/null'
+
+      - name: Generate stackbrew manifest preview
+        run: |
+          set -euo pipefail
+          sh ./generate-stackbrew-library.sh > /tmp/library-peakurl
+          grep -F "Tags: $(jq -r '.\"1.0\".tags | join(\", \")' versions.json)" /tmp/library-peakurl
+          grep -F "Directory: $(jq -r '.\"1.0\".directory' versions.json)" /tmp/library-peakurl
+
+      - name: Clean up compose stack
+        if: always()
+        run: docker compose down --remove-orphans || true

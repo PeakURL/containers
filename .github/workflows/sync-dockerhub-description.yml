@@ -1,0 +1,55 @@
+name: Sync Docker Hub Overview
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+  workflow_dispatch:
+
+env:
+  DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || 'peakurl' }}
+  DOCKERHUB_DESCRIPTION_USERNAME: ${{ vars.DOCKERHUB_DESCRIPTION_USERNAME || vars.DOCKERHUB_USERNAME || vars.DOCKERHUB_NAMESPACE || 'peakurl' }}
+  DOCKERHUB_DESCRIPTION_TOKEN: ${{ secrets.DOCKERHUB_DESCRIPTION_TOKEN || secrets.DOCKERHUB_TOKEN || '' }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check overview sync configuration
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DOCKERHUB_DESCRIPTION_USERNAME:-}" ] || [ -z "${DOCKERHUB_DESCRIPTION_TOKEN:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "message=Skipped: set Docker Hub description credentials in repo variables and secrets." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "message=Updating Docker Hub overview for ${DOCKERHUB_NAMESPACE}/peakurl with ${DOCKERHUB_DESCRIPTION_USERNAME}." >> "$GITHUB_OUTPUT"
+
+      - name: Update Docker Hub overview
+        if: steps.config.outputs.enabled == 'true'
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ env.DOCKERHUB_DESCRIPTION_USERNAME }}
+          password: ${{ env.DOCKERHUB_DESCRIPTION_TOKEN }}
+          repository: ${{ env.DOCKERHUB_NAMESPACE }}/peakurl
+          short-description: Official Docker image for PeakURL, a self-hosted URL shortener.
+          enable-url-completion: true
+
+      - name: Write workflow summary
+        shell: bash
+        run: |
+          {
+            echo "## Docker Hub Overview"
+            echo
+            echo "${{ steps.config.outputs.message }}"
+          } >> "$GITHUB_STEP_SUMMARY"

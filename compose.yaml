@@ -1,0 +1,56 @@
+services:
+  peakurl:
+    image: docker.io/peakurl/peakurl:${PEAKURL_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      # Change this to your public domain.
+      APACHE_SERVER_NAME: example.com
+      PEAKURL_INSTALL_DB_HOST_DEFAULT: db
+      PEAKURL_INSTALL_DB_PORT_DEFAULT: "3306"
+      # Keep these installer defaults aligned with the database service below.
+      PEAKURL_INSTALL_DB_NAME_DEFAULT: peakurl
+      PEAKURL_INSTALL_DB_USER_DEFAULT: peakurl
+      PEAKURL_INSTALL_DB_PASSWORD_DEFAULT: change-this-password
+    ports:
+      # <Host IP>:<Host Port>:<Container Port>
+      - "127.0.0.1:8080:80"
+    volumes:
+      # Keep the full PeakURL app tree beside the compose file.
+      - "./data/peakurl:/var/www/html"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      # Change these database values before you deploy.
+      MYSQL_DATABASE: peakurl
+      MYSQL_USER: peakurl
+      MYSQL_PASSWORD: change-this-password
+      MYSQL_ROOT_PASSWORD: change-this-root-password
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-name-resolve
+    volumes:
+      # Keep database data beside the compose file by default.
+      - "./data/mysql:/var/lib/mysql"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
