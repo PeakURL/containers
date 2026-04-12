@@ -8,6 +8,7 @@ Official Docker image for PeakURL, a self-hosted URL shortener.
 - Source: [PeakURL/containers](https://github.com/PeakURL/containers)
 - Core app: [PeakURL/PeakURL](https://github.com/PeakURL/PeakURL)
 - Issues: [PeakURL/containers/issues](https://github.com/PeakURL/containers/issues)
+- Learn More: [PeakURL Docker Documentation](http://peakurl.org/docs/docker)
 - Supported architectures: `linux/amd64`, `linux/arm64`
 - Tag style: version tags such as `1.0.12`, semver aliases such as `1.0` and `1`, plus `latest`
 
@@ -46,57 +47,71 @@ Recommended layout on a server:
 
 Edit the values in `compose.yaml` before you start the stack:
 
-- set `APACHE_SERVER_NAME` to your domain
-- set the `127.0.0.1:8080:80` port mapping to the localhost port your host
-  proxy will use
+- set `APACHE_SERVER_NAME` to your real public short domain
+- review the `127.0.0.1:8080:80` port mapping and keep it on localhost if a
+  host reverse proxy will forward traffic
 - set the MySQL credentials in the `db` service
 - keep the PeakURL installer defaults in the `peakurl` service aligned with the
   MySQL values
+- pin `PEAKURL_IMAGE_TAG` to an exact version if you want repeatable deploys
 
 Example `compose.yaml`:
 
 ```yaml
 services:
-  peakurl:
-    image: peakurl/peakurl:latest
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      APACHE_SERVER_NAME: example.com
-      PEAKURL_INSTALL_DB_HOST_DEFAULT: db
-      PEAKURL_INSTALL_DB_PORT_DEFAULT: "3306"
-      PEAKURL_INSTALL_DB_NAME_DEFAULT: peakurl
-      PEAKURL_INSTALL_DB_USER_DEFAULT: peakurl
-      PEAKURL_INSTALL_DB_PASSWORD_DEFAULT: change-this-password
-    ports:
-      - "127.0.0.1:8080:80"
-    volumes:
-      - "./data/peakurl:/var/www/html"
+    peakurl:
+        # Pin an exact tag when you want repeatable deployments.
+        image: docker.io/peakurl/peakurl:${PEAKURL_IMAGE_TAG:-latest}
+        restart: unless-stopped
+        environment:
+            TZ: UTC
+            # Change this to your real public short domain.
+            APACHE_SERVER_NAME: example.com
+            PEAKURL_INSTALL_DB_HOST_DEFAULT: db
+            PEAKURL_INSTALL_DB_PORT_DEFAULT: "3306"
+            # Keep these installer defaults aligned with the MySQL service below.
+            PEAKURL_INSTALL_DB_NAME_DEFAULT: peakurl
+            PEAKURL_INSTALL_DB_USER_DEFAULT: peakurl
+            PEAKURL_INSTALL_DB_PASSWORD_DEFAULT: change-this-password
+        ports:
+            # Keep this on localhost if a host reverse proxy will forward traffic.
+            # <Host IP>:<Host Port>:<Container Port>
+            - "127.0.0.1:8080:80"
+        volumes:
+            # Keep the full PeakURL app tree beside the compose file.
+            - "./data/peakurl:/var/www/html"
+        depends_on:
+            db:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
+            interval: 30s
+            timeout: 5s
+            retries: 5
+            start_period: 20s
 
-  db:
-    image: mysql:8.4
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: peakurl
-      MYSQL_USER: peakurl
-      MYSQL_PASSWORD: change-this-password
-      MYSQL_ROOT_PASSWORD: change-this-root-password
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --skip-name-resolve
-    volumes:
-      - "./data/mysql:/var/lib/mysql"
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
+    db:
+        image: mysql:8.4
+        restart: unless-stopped
+        environment:
+            # Change these database values before you deploy.
+            MYSQL_DATABASE: peakurl
+            MYSQL_USER: peakurl
+            MYSQL_PASSWORD: change-this-password
+            MYSQL_ROOT_PASSWORD: change-this-root-password
+        command:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --skip-name-resolve
+        volumes:
+            # Keep database data beside the compose file by default.
+            - "./data/mysql:/var/lib/mysql"
+        healthcheck:
+            test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 30s
 ```
 
 Create the directories first:
@@ -108,7 +123,6 @@ mkdir -p data/peakurl data/mysql
 Start it with:
 
 ```bash
-mkdir -p data/peakurl data/mysql
 docker compose up -d
 ```
 
