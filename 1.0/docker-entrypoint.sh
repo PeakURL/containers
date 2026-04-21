@@ -5,12 +5,16 @@ APP_ROOT="/var/www/html"
 SOURCE_ROOT="/usr/src/peakurl"
 
 mkdir -p "$APP_ROOT"
+app_root=0
 
 if [ ! -e "$APP_ROOT/install.php" ]; then
     tar -C "$SOURCE_ROOT" -cf - . | tar -C "$APP_ROOT" -xf -
+    app_root=1
 fi
 
-chown -R www-data:www-data "$APP_ROOT"
+if [ "$app_root" -eq 1 ]; then
+    chown -R www-data:www-data "$APP_ROOT"
+fi
 
 if [ -n "${APACHE_SERVER_NAME:-}" ]; then
     printf 'ServerName %s\n' "$APACHE_SERVER_NAME" > /etc/apache2/conf-available/zzz-server-name.conf

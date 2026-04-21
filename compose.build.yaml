@@ -5,5 +5,5 @@ services:
       dockerfile: docker/peakurl/Dockerfile
       args:
         PEAKURL_VERSION: ${PEAKURL_IMAGE_TAG:-local}
-        PEAKURL_RELEASE_URL: ${PEAKURL_RELEASE_URL:-https://releases.peakurl.org/latest.zip}
-        PEAKURL_RELEASE_SHA256: ${PEAKURL_RELEASE_SHA256:-}
+        PEAKURL_RELEASE_URL: ${PEAKURL_RELEASE_URL:?Set PEAKURL_RELEASE_URL to the release archive URL.}
+        PEAKURL_RELEASE_SHA256: ${PEAKURL_RELEASE_SHA256:?Set PEAKURL_RELEASE_SHA256 to the release archive SHA256.}

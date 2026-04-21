@@ -16,6 +16,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Load build inputs from versions.json
+        run: |
+          set -euo pipefail
+          echo "PEAKURL_IMAGE_TAG=$(jq -r '.\"1.0\".version' versions.json)" >> "$GITHUB_ENV"
+          echo "PEAKURL_RELEASE_URL=$(jq -r '.\"1.0\".releaseUrl' versions.json)" >> "$GITHUB_ENV"
+          echo "PEAKURL_RELEASE_SHA256=$(jq -r '.\"1.0\".releaseSha256' versions.json)" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
@@ -26,7 +33,12 @@ jobs:
         run: docker compose -f compose.yaml -f compose.build.yaml config
 
       - name: Build PeakURL image
-        run: docker build --pull -t peakurl:test -f docker/peakurl/Dockerfile .
+        run: |
+          docker build --pull -t peakurl:test -f docker/peakurl/Dockerfile \
+            --build-arg PEAKURL_VERSION="$PEAKURL_IMAGE_TAG" \
+            --build-arg PEAKURL_RELEASE_URL="$PEAKURL_RELEASE_URL" \
+            --build-arg PEAKURL_RELEASE_SHA256="$PEAKURL_RELEASE_SHA256" \
+            .
 
       - name: Verify DOI metadata is in sync
         run: |

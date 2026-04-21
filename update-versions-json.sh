@@ -74,6 +74,7 @@ DOI_DIR="$SCRIPT_DIR/$DIRECTORY"
 mkdir -p "$DOI_DIR"
 cp "$ROOT_ENTRYPOINT" "$DOI_DIR/docker-entrypoint.sh"
 cp "$ROOT_PHP_INI" "$DOI_DIR/php.ini"
+chmod +x "$DOI_DIR/docker-entrypoint.sh"
 
 VERSION_ESCAPED="$(escape_sed_replacement "$VERSION")"
 RELEASE_URL_ESCAPED="$(escape_sed_replacement "$RELEASE_URL")"

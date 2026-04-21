@@ -117,5 +117,3 @@ jobs:
             PEAKURL_VERSION=${{ steps.build.outputs.image_tag }}
             PEAKURL_RELEASE_URL=${{ steps.build.outputs.release_url }}
             PEAKURL_RELEASE_SHA256=${{ steps.build.outputs.release_sha256 }}
-            VCS_REF=${{ github.sha }}
-            BUILD_DATE=${{ steps.build.outputs.build_date }}
