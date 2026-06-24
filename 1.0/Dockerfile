@@ -18,6 +18,7 @@ WORKDIR /var/www/html
 RUN set -eux; \
     savedAptMark="$(apt-mark showmanual)"; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends unzip libicu-dev libzip-dev; \
     docker-php-ext-install intl pdo_mysql zip; \
     a2enmod rewrite headers expires; \
