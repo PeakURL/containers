@@ -19,8 +19,10 @@ RUN set -eux; \
     savedAptMark="$(apt-mark showmanual)"; \
     apt-get update; \
     apt-get upgrade -y; \
-    apt-get install -y --no-install-recommends unzip libicu-dev libzip-dev; \
+    apt-get install -y --no-install-recommends unzip libicu-dev libzip-dev $PHPIZE_DEPS; \
     docker-php-ext-install intl pdo_mysql zip; \
+    pecl install apcu redis; \
+    docker-php-ext-enable apcu redis; \
     a2enmod rewrite headers expires; \
     curl -fsSL "$PEAKURL_RELEASE_URL" -o /tmp/peakurl.zip; \
     echo "$PEAKURL_RELEASE_SHA256  /tmp/peakurl.zip" | sha256sum -c -; \

@@ -73,6 +73,9 @@ services:
             PEAKURL_INSTALL_DB_NAME_DEFAULT: peakurl
             PEAKURL_INSTALL_DB_USER_DEFAULT: peakurl
             PEAKURL_INSTALL_DB_PASSWORD_DEFAULT: change-this-password
+            # Optional Redis object caching connection.
+            PEAKURL_REDIS_HOST: redis
+            PEAKURL_REDIS_PORT: 6379
         ports:
             # Keep this on localhost if a host reverse proxy will forward traffic.
             # <Host IP>:<Host Port>:<Container Port>
@@ -83,12 +86,25 @@ services:
         depends_on:
             db:
                 condition: service_healthy
+            redis:
+                condition: service_healthy
         healthcheck:
             test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
             interval: 30s
             timeout: 5s
             retries: 5
             start_period: 20s
+
+    redis:
+        image: redis:7-alpine
+        restart: unless-stopped
+        volumes:
+            - "./data/redis:/data"
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
 
     db:
         image: mysql:8.4
