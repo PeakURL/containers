@@ -51,24 +51,49 @@ jobs:
             echo "image_name=$IMAGE_NAME"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Resolve build inputs
+      - name: Resolve build inputs and download release archive
         id: build
         shell: bash
         env:
           DOCKERHUB_IMAGE_NAME: ${{ steps.dockerhub.outputs.image_name }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           set -euo pipefail
 
           IMAGE_TAG="${{ inputs.image_tag }}"
           RELEASE_URL="${{ inputs.release_url }}"
-          RELEASE_SHA256="${{ inputs.release_sha256 }}"
+          INPUT_SHA256="${{ inputs.release_sha256 }}"
 
-          if [ -z "$RELEASE_SHA256" ]; then
-            TMP_ARCHIVE="$(mktemp)"
-            trap 'rm -f "$TMP_ARCHIVE"' EXIT
-            curl --fail --silent --show-error --location "$RELEASE_URL" --output "$TMP_ARCHIVE"
-            RELEASE_SHA256="$(sha256sum "$TMP_ARCHIVE" | awk '{print $1}')"
+          ARCHIVE_FILENAME="peakurl-${IMAGE_TAG}.zip"
+          R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          if [ -n "$RELEASE_URL" ]; then
+            ARCHIVE_KEY="$(echo "$RELEASE_URL" | sed -E 's|^https?://[^/]+/||')"
+          elif [ "$IMAGE_TAG" = "latest" ]; then
+            ARCHIVE_KEY="latest.zip"
+          else
+            ARCHIVE_KEY="package/peakurl-${IMAGE_TAG}.zip"
           fi
+
+          echo "Downloading archive from R2: s3://${R2_BUCKET}/${ARCHIVE_KEY} -> ${ARCHIVE_FILENAME}"
+          aws s3 cp "s3://${R2_BUCKET}/${ARCHIVE_KEY}" "$ARCHIVE_FILENAME" --endpoint-url "$R2_ENDPOINT"
+
+          COMPUTED_SHA256="$(sha256sum "$ARCHIVE_FILENAME" | awk '{print $1}')"
+
+          if [ -n "$INPUT_SHA256" ] && [ "$INPUT_SHA256" != "$COMPUTED_SHA256" ]; then
+            echo "SHA256 mismatch for ${ARCHIVE_FILENAME}!" >&2
+            echo "Expected: $INPUT_SHA256" >&2
+            echo "Computed: $COMPUTED_SHA256" >&2
+            exit 1
+          fi
+
+          RELEASE_SHA256="$COMPUTED_SHA256"
+          echo "Verified release archive ${ARCHIVE_FILENAME} (SHA-256: ${RELEASE_SHA256})"
 
           TAG_ALIASES="$IMAGE_TAG"
           if [[ "$IMAGE_TAG" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
@@ -85,7 +110,7 @@ jobs:
 
           {
             echo "image_tag=$IMAGE_TAG"
-            echo "release_url=$RELEASE_URL"
+            echo "archive_file=$ARCHIVE_FILENAME"
             echo "release_sha256=$RELEASE_SHA256"
             echo "build_date=$BUILD_DATE"
             echo "tag_aliases<<EOF"
@@ -115,5 +140,5 @@ jobs:
           cache-to: type=gha,mode=max,scope=peakurl-image
           build-args: |
             PEAKURL_VERSION=${{ steps.build.outputs.image_tag }}
-            PEAKURL_RELEASE_URL=${{ steps.build.outputs.release_url }}
+            PEAKURL_ARCHIVE_FILE=${{ steps.build.outputs.archive_file }}
             PEAKURL_RELEASE_SHA256=${{ steps.build.outputs.release_sha256 }}

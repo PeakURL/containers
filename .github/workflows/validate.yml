@@ -22,11 +22,29 @@ jobs:
       - name: Validate user compose configuration
         run: docker compose config
 
+      - name: Download release archive from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.["1.0"].version' versions.json)"
+          release_sha256="$(jq -r '.["1.0"].releaseSha256' versions.json)"
+          archive_key="package/peakurl-${version}.zip"
+          R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          echo "Downloading archive from R2: s3://${R2_BUCKET}/${archive_key} -> peakurl.zip"
+          aws s3 cp "s3://${R2_BUCKET}/${archive_key}" peakurl.zip --endpoint-url "$R2_ENDPOINT"
+          echo "${release_sha256}  peakurl.zip" | sha256sum -c -
+
       - name: Validate build overlay configuration
         run: |
           set -euo pipefail
           export PEAKURL_IMAGE_TAG="$(jq -r '.["1.0"].version' versions.json)"
-          export PEAKURL_RELEASE_URL="$(jq -r '.["1.0"].releaseUrl' versions.json)"
+          export PEAKURL_ARCHIVE_FILE="peakurl.zip"
           export PEAKURL_RELEASE_SHA256="$(jq -r '.["1.0"].releaseSha256' versions.json)"
           docker compose -f compose.yaml -f compose.build.yaml config
 
@@ -34,11 +52,10 @@ jobs:
         run: |
           set -euo pipefail
           export PEAKURL_IMAGE_TAG="$(jq -r '.["1.0"].version' versions.json)"
-          export PEAKURL_RELEASE_URL="$(jq -r '.["1.0"].releaseUrl' versions.json)"
           export PEAKURL_RELEASE_SHA256="$(jq -r '.["1.0"].releaseSha256' versions.json)"
           docker build --pull -t peakurl:test -f docker/peakurl/Dockerfile \
             --build-arg PEAKURL_VERSION="$PEAKURL_IMAGE_TAG" \
-            --build-arg PEAKURL_RELEASE_URL="$PEAKURL_RELEASE_URL" \
+            --build-arg PEAKURL_ARCHIVE_FILE="peakurl.zip" \
             --build-arg PEAKURL_RELEASE_SHA256="$PEAKURL_RELEASE_SHA256" \
             .
 
@@ -56,7 +73,18 @@ jobs:
           cmp -s docker/peakurl/php.ini 1.0/php.ini
 
       - name: Build DOI pinned image
-        run: docker build --pull -t peakurl:doi-test -f 1.0/Dockerfile 1.0
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doi-mirror
+          version="$(jq -r '."1.0".version' versions.json)"
+          cp peakurl.zip "/tmp/doi-mirror/peakurl-${version}.zip"
+          python3 -m http.server 8999 --directory /tmp/doi-mirror &
+          DOI_PID=$!
+          trap 'kill "$DOI_PID" 2>/dev/null || true' EXIT
+          sleep 1
+          docker build --pull --network host -t peakurl:doi-test \
+            --build-arg PEAKURL_RELEASE_URL="http://127.0.0.1:8999/peakurl-${version}.zip" \
+            -f 1.0/Dockerfile 1.0
 
       - name: Smoke test docker compose deployment
         run: |

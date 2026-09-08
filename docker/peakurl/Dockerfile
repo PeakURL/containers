@@ -1,7 +1,7 @@
 FROM php:8.4-apache-bookworm
 
 ARG PEAKURL_VERSION=latest
-ARG PEAKURL_RELEASE_URL=https://releases.peakurl.org/latest.zip
+ARG PEAKURL_ARCHIVE_FILE=peakurl.zip
 ARG PEAKURL_RELEASE_SHA256=
 
 LABEL org.opencontainers.image.title="PeakURL"
@@ -15,6 +15,8 @@ LABEL org.opencontainers.image.vendor="PeakURL"
 
 WORKDIR /var/www/html
 
+COPY ${PEAKURL_ARCHIVE_FILE} /tmp/peakurl.zip
+
 RUN set -eux; \
     savedAptMark="$(apt-mark showmanual)"; \
     apt-get update; \
@@ -24,7 +26,6 @@ RUN set -eux; \
     pecl install apcu redis; \
     docker-php-ext-enable apcu redis; \
     a2enmod rewrite headers expires; \
-    curl -fsSL "$PEAKURL_RELEASE_URL" -o /tmp/peakurl.zip; \
     echo "$PEAKURL_RELEASE_SHA256  /tmp/peakurl.zip" | sha256sum -c -; \
     rm -rf /var/www/html/*; \
     mkdir -p /usr/src/peakurl; \
